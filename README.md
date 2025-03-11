@@ -16,6 +16,8 @@
 
 **Why Script-sync?** Although Rhino8 has a wonderful IDE, we often miss the nice extensions and functions of a full-fledged IDE like VSCode. Script-sync allows you to run your scripts directly from VSCode, while keeping the Rhino/Grasshopper environment open. This is particularly useful if you have *AI-assisted* (e.g. GithubCoPilot) code completion.
 
+Also, if Rhino crashes, your code is still safe and editable.
+
 You can execute the folloing languages from VSCode with script-sync:
 
 |               | CPython | IronPython  | C# |
