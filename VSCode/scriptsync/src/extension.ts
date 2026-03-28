@@ -91,12 +91,12 @@ export function activate(context: vscode.ExtensionContext) {
 
         // check the file extension: accept only .py and .cs files
         const activeTextEditor = vscode.window.activeTextEditor;
-        let fileExtension = '';
-        
-        if (activeTextEditor) {
-            const activeDocument = activeTextEditor.document;
-            fileExtension = activeDocument.uri.path.split('.').pop() || '';
+        if (!activeTextEditor) {
+            vscode.window.showWarningMessage('scriptsync::No active text editor');
+            return;
         }
+
+        let fileExtension = activeTextEditor.document.uri.path.split('.').pop() || '';
         if (fileExtension !== 'py' && fileExtension !== 'cs') {
             vscode.window.showWarningMessage('scriptsync::File extension not supported');
             return;
@@ -108,16 +108,12 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage('scriptsync::Run ScriptSyncStart on Rhino first.');
             console.error('Error: ', error);
         });
-        client.connect(58259, '127.0.0.1', () => {
-            const activeTextEditor = vscode.window.activeTextEditor;
-            if (activeTextEditor) {
-                const activeDocument = activeTextEditor.document;
-                const activeDocumentPath = activeDocument.uri.path;
+
+        activeTextEditor.document.save().then(() => {
+            client.connect(58259, '127.0.0.1', () => {
+                const activeDocumentPath = activeTextEditor.document.uri.path;
                 client.write(activeDocumentPath);
-            }
-            else {
-                vscode.window.showWarningMessage('scriptsync::No active text editor');
-            }
+            });
         });
     });
     context.subscriptions.push(rhinoSenderCmd);
