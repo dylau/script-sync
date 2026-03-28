@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -40,11 +41,6 @@ namespace ScriptSync
 
         protected override Rhino.Commands.Result RunCommand(RhinoDoc doc, RunMode mode)
         {
-            // initialize the ScriptEditor if it is not already. Otherwise the first client
-            // tcp message needs to be sent twice to be executed.
-            RhinoApp.RunScript("_-ScriptEditor _Enter", false);
-
-            // start the server on a new thread
             RhinoApp.WriteLine("Starting ScriptSync..");
             // check if the IP is already in use
             try
@@ -89,19 +85,14 @@ namespace ScriptSync
             _server.Start();
             IsRunning = true;
 
-            RhinoApp.InvokeOnUiThread(new Action(() =>
-            {
-                if (!IsScriptEditorRunnerFromThreadOk())
-                    RhinoApp.WriteLine("Warning: ScriptEditorRunner is failing starting tests");
-            }));
-
             while (IsRunning)
             {
                 TcpClient client = _server.AcceptTcpClient();
-                byte[] data = new byte[1024];
+                client.NoDelay = true;
+                byte[] data = new byte[4096];
                 NetworkStream stream = client.GetStream();
                 int bytesRead = stream.Read(data, 0, data.Length);
-                string scriptPath = Encoding.ASCII.GetString(data, 0, bytesRead);
+                string scriptPath = Encoding.ASCII.GetString(data, 0, bytesRead).Trim();
 
                 if (bytesRead == 0)
                 {
@@ -109,23 +100,103 @@ namespace ScriptSync
                     break;
                 }
 
-                RhinoApp.InvokeOnUiThread(new Action(() =>
+                string resultJson = "{\"success\":true,\"error\":\"\"}";
+                string cleanPath = scriptPath.Trim();
+                if (cleanPath.StartsWith("/"))
+                    cleanPath = cleanPath.Substring(1);
+                cleanPath = cleanPath.Replace("/", "\\");
+
+                string scriptExt = System.IO.Path.GetExtension(cleanPath).ToLower();
+                string scriptDir = System.IO.Path.GetDirectoryName(cleanPath);
+                string scriptName = System.IO.Path.GetFileNameWithoutExtension(cleanPath);
+                string errorFilePath = cleanPath + ".error";
+
+                if (scriptExt == ".py")
                 {
-                    try
+                    try { if (File.Exists(errorFilePath)) File.Delete(errorFilePath); } catch { }
+
+                    string wrappedScriptPath = System.IO.Path.Combine(scriptDir, ".__scsy_wrapper__.py");
+                    string originalCode = File.ReadAllText(cleanPath, Encoding.UTF8);
+                    string shebang = "";
+                    if (originalCode.StartsWith("#!"))
                     {
-                        RhinoApp.RunScript("_-ScriptEditor Run " + scriptPath, true);
+                        int newlineIdx = originalCode.IndexOf('\n');
+                        shebang = originalCode.Substring(0, newlineIdx + 1);
+                        originalCode = originalCode.Substring(newlineIdx + 1);
                     }
-                    catch (Exception e)
+
+                    string wrappedCode = shebang + 
+                        "import sys, traceback\n" +
+                        "try:\n" +
+                        "    " + originalCode.Replace("\n", "\n    ") + "\n" +
+                        "except Exception:\n" +
+                        "    with open(r\"" + errorFilePath + "\", 'w') as f:\n" +
+                        "        f.write(traceback.format_exc())\n" +
+                        "    raise\n";
+
+                    File.WriteAllText(wrappedScriptPath, wrappedCode, Encoding.UTF8);
+
+                    RhinoApp.InvokeOnUiThread(new Action(() =>
                     {
-                        RhinoApp.WriteLine("Error: " + e.Message);
-                    }
-                }));
+                        try
+                        {
+                            RhinoApp.RunScript("_-ScriptEditor _Run \"" + wrappedScriptPath + "\"", true);
+                        }
+                        catch { }
+                    }));
+
+                    Thread.Sleep(500);
+
+                    try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catch { }
+                }
+                else
+                {
+                    RhinoApp.InvokeOnUiThread(new Action(() =>
+                    {
+                        try
+                        {
+                            RhinoApp.RunScript("_-ScriptEditor _Run \"" + cleanPath + "\"", true);
+                        }
+                        catch { }
+                    }));
+                }
+
+                Thread.Sleep(100);
+
+                byte[] responseBytes = Encoding.ASCII.GetBytes(resultJson);
+                try
+                {
+                    stream.Write(responseBytes, 0, responseBytes.Length);
+                    stream.Flush();
+                }
+                catch { }
+
+                client.Close();
             }
             _server.Stop();
             RhinoApp.InvokeOnUiThread(new Action(() =>
             {
                 RhinoApp.WriteLine("ScriptSync stopped");
             }));
+        }
+
+        private string EscapeJsonString(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder sb = new StringBuilder();
+            foreach (char c in s)
+            {
+                switch (c)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default: sb.Append(c); break;
+                }
+            }
+            return sb.ToString();
         }
 
         /// <summary>

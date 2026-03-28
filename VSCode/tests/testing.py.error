@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "file:///C:/Users/uk083720/Documents/dliu/04_Code/script-sync/VSCode/tests/testing.py", line 14, in <module>
+  File "C:\Users\uk083720\Documents\dliu\04_Code\rh8-py39-utils\rh8_py39_utils.py", line 125, in wrapper
+    return func(*args, **kwargs)
+  File "C:\Users\uk083720\Documents\dliu\04_Code\rh8-py39-utils\rh8_py39_utils.py", line 165, in create_layer_if_not_exist
+    if not rs.IsLayer(layer_name):
+  File "C:\Users\uk083720\.rhinocode\py39-rh8\site-rhinopython\rhinoscript\layer.py", line 176, in IsLayer
+    layer = __getlayer(layer, False)
+  File "C:\Users\uk083720\.rhinocode\py39-rh8\site-rhinopython\rhinoscript\layer.py", line 19, in __getlayer
+    layer_index = scriptcontext.doc.Layers.FindByFullPath(name, RhinoMath.UnsetIntIndex)
+TypeError: 'int' value cannot be converted to System.String in method Int32 FindByFullPath(System.String, Int32)

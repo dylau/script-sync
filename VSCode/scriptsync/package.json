@@ -18,7 +18,10 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:scriptsync.sendPath",
+    "onCommand:scriptsync.toggleGH"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [

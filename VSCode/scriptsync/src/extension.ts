@@ -85,6 +85,10 @@ export function activate(context: vscode.ExtensionContext) {
     //%% Rhino
     //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     let rhinoSenderCmd = vscode.commands.registerCommand('scriptsync.sendPath', () => {
+        console.log('scriptsync.sendPath command triggered');
+        outputChannel.appendLine('F4 pressed - sending to Rhino');
+        vscode.window.showInformationMessage('scriptsync::Sending to Rhino...');
+
         // port and ip address of the server
         const port = 58259;
         const host = '127.0.0.1';
@@ -109,9 +113,35 @@ export function activate(context: vscode.ExtensionContext) {
             console.error('Error: ', error);
         });
 
+        client.on('data', (data) => {
+            console.log('Received data:', data.toString());
+            try {
+                const response = JSON.parse(data.toString());
+                outputChannel.clear();
+                outputChannel.show(true);
+                if (response.output && (response.output as string).trim().length > 0) {
+                    outputChannel.appendLine(response.output);
+                }
+                if (response.success) {
+                    outputChannel.appendLine('scriptsync :: ok');
+                } else {
+                    outputChannel.appendLine('─'.repeat(60));
+                    outputChannel.appendLine('scriptsync :: error');
+                    outputChannel.appendLine(response.error);
+                    outputChannel.appendLine('─'.repeat(60));
+                    const firstLine = (response.error as string).split('\n').find((l: string) => l.trim().length > 0) ?? 'Runtime error';
+                    vscode.window.showErrorMessage(`scriptsync :: ${firstLine}`);
+                }
+            } catch {
+                outputChannel.appendLine('Raw response: ' + data.toString());
+            }
+        });
+
         activeTextEditor.document.save().then(() => {
             client.connect(58259, '127.0.0.1', () => {
+                outputChannel.appendLine('Connected to Rhino');
                 const activeDocumentPath = activeTextEditor.document.uri.path;
+                outputChannel.appendLine('Sending: ' + activeDocumentPath);
                 client.write(activeDocumentPath);
             });
         });
