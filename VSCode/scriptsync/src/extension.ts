@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage('scriptsync::Sending to Rhino...');
 
         // port and ip address of the server
-        const port = 58259;
+        const port = 58258;
         const host = '127.0.0.1';
 
         // check the file extension: accept only .py and .cs files
@@ -138,7 +138,7 @@ export function activate(context: vscode.ExtensionContext) {
         });
 
         activeTextEditor.document.save().then(() => {
-            client.connect(58259, '127.0.0.1', () => {
+            client.connect(58258, '127.0.0.1', () => {
                 outputChannel.appendLine('Connected to Rhino');
                 const activeDocumentPath = activeTextEditor.document.uri.path;
                 outputChannel.appendLine('Sending: ' + activeDocumentPath);

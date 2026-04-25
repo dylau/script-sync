@@ -14,7 +14,7 @@
 
 Script-Sync uses a **client-server TCP architecture**:
 
-- **Server (Rhino):** C# plugin (`CsRhino/`) listens on TCP port `58259`
+- **Server (Rhino):** C# plugin (`CsRhino/`) listens on TCP port `58258`
 - **Client (VSCode):** TypeScript extension (`VSCode/scriptsync/`) connects and sends file paths as JSON
 - **GH Listener:** VSCode listens on port `58260` for Grasshopper responses
 

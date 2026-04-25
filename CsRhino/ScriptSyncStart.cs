@@ -1,6 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -28,7 +27,7 @@ namespace ScriptSync
         /// <summary> The IP address of the server. </summary>
         public string Ip = "127.0.0.1";
         /// <summary> The port of the server. </summary>
-        public int Port = 58259;
+        public int Port = 58258;
 
         public ScriptSyncStart()
         {
@@ -42,18 +41,45 @@ namespace ScriptSync
         protected override Rhino.Commands.Result RunCommand(RhinoDoc doc, RunMode mode)
         {
             RhinoApp.WriteLine("Starting ScriptSync..");
-            // check if the IP is already in use
+            
+            // if it is already in use by the instance of this Rhino
+            if (IsRunning)
+            {
+                RhinoApp.WriteLine("Server already running");
+                return Rhino.Commands.Result.Success;
+            }
+
+            KillExistingListener();
+            
+            // Try to start the server directly - if port is still in TIME_WAIT from previous run,
+            // the TcpListener will handle it or we'll get a specific error
             try
             {
-                TcpListener check = new TcpListener(IPAddress.Parse(Ip), Port);
-                check.Start();
-                check.Stop();
+                _server = new TcpListener(IPAddress.Parse(Ip), Port);
+                _server.Start();
             }
             catch (Exception e)
             {
-                if (e.Message.Contains("Only one usage of each socket address"))
+                // Check if it's this Rhino instance that still has the port
+                if (ScriptSyncStop.Instance != null && ScriptSyncStop.Instance.IsRunning())
                 {
-                    RhinoApp.WriteLine("Error: there are two instances of Rhino running script-sync, only one is allowed.");
+                    RhinoApp.WriteLine("Stopping existing listener...");
+                    ScriptSyncStop.Instance.Stop();
+                    Thread.Sleep(500);
+                    try
+                    {
+                        _server = new TcpListener(IPAddress.Parse(Ip), Port);
+                        _server.Start();
+                    }
+                    catch (Exception ex)
+                    {
+                        RhinoApp.WriteLine("Error: " + ex.Message);
+                        return Rhino.Commands.Result.Failure;
+                    }
+                }
+                else if (e.Message.Contains("Only one usage of each socket address"))
+                {
+                    RhinoApp.WriteLine("Error: another process is using port " + Port);
                 }
                 else
                 {
@@ -62,13 +88,6 @@ namespace ScriptSync
                 return Rhino.Commands.Result.Failure;
             }
             
-            // if it is already in use by the instance of this Rhino
-            if (IsRunning)
-            {
-                RhinoApp.WriteLine("Server already running");
-                return Rhino.Commands.Result.Success;
-            }
-            _server = new TcpListener(IPAddress.Parse(Ip), Port);
             IsRunning = false;
 
             Thread WorkerThread = new Thread(new ThreadStart(Run));
@@ -77,13 +96,60 @@ namespace ScriptSync
             return Rhino.Commands.Result.Success;
         }
 
+        private void KillExistingListener()
+        {
+            if (ScriptSyncStop.Instance != null && ScriptSyncStop.Instance.IsRunning())
+            {
+                RhinoApp.WriteLine("Stopping existing listener...");
+                ScriptSyncStop.Instance.Stop();
+                Thread.Sleep(500);
+                RhinoApp.WriteLine("Stopped existing listener");
+                return;
+            }
+            
+            // PowerShell fallback disabled to avoid killing other Rhino instances
+            // try
+            // {
+            //     var startInfo = new ProcessStartInfo
+            //     {
+            //         FileName = "powershell",
+            //         Arguments = "-Command \"Get-NetTCPConnection -LocalPort " + Port + " -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }\"",
+            //         UseShellExecute = false,
+            //         CreateNoWindow = true
+            //     };
+            //     Process.Start(startInfo);
+            //     Thread.Sleep(1000);
+            // }
+            // catch (Exception ex)
+            // {
+            //     RhinoApp.WriteLine("Warning: Could not free port: " + ex.Message);
+            // }
+        }
+
         /// <summary>
         /// It is called on a thread to run the server and listen for incoming paths to run.
         /// </summary>
         public void Run()
         {
+            // Enable SO_REUSEADDR to allow reusing the port after restart
+            _server.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _server.Start();
             IsRunning = true;
+
+            // Run init Python file to initialize Python3 in Rhino
+            string initScriptPath = @"C:\Users\uk083720\.rhinocode\py39-rh8\lib\importlib\__init__.py";
+            if (System.IO.File.Exists(initScriptPath))
+            {
+                RhinoApp.InvokeOnUiThread(new Action(() =>
+                {
+                    try
+                    {
+                        RhinoApp.RunScript("_-ScriptEditor _Run \"" + initScriptPath + "\"", true);
+                        RhinoApp.WriteLine("Python initialized with importlib");
+                    }
+                    catch { }
+                }));
+            }
 
             while (IsRunning)
             {
@@ -94,7 +160,7 @@ namespace ScriptSync
                 int bytesRead = stream.Read(data, 0, data.Length);
                 string scriptPath = Encoding.ASCII.GetString(data, 0, bytesRead).Trim();
 
-                if (bytesRead == 0)
+                if (bytesRead == 0 || scriptPath == "__SCRIPTSYNC_STOP__")
                 {
                     IsRunning = false;
                     break;

@@ -35,7 +35,7 @@ You can execute the folloing languages from VSCode with script-sync:
 👩‍💻 **`VScode`**: Install script-syncVSCode extension from the VSCode extension marketplace (name: "script-sync")
 
 ## How to use
-🦏 **`Rhino`**: To start `script-sync` in RhinoV8, run the command `ScriptSyncStart` in RhinoV8. This will start a server that listens to commands from VSCode.
+🦏 **`Rhino`**: To start `script-sync` in RhinoV8, run the command `ScriptSyncStart` in RhinoV8. This will start a server that listens to commands from VSCode. Python3 is automatically initialized on start.
 To close `script-sync` in RhinoV8, run the command `ScriptSyncStop` in RhinoV8.
 
 🦗 **`Grasshopper`**: To start `script-sync` in Grasshopper, add the component script-sync:
@@ -59,7 +59,7 @@ To close `script-sync` in RhinoV8, run the command `ScriptSyncStop` in RhinoV8.
 👩‍💻 **`VScode`**: Install script-syncVSCode extension from the VSCode extension marketplace (name: "script-sync")
 
 ## How to use
-🦏 **`Rhino`**: To start `script-sync` in RhinoV8, run the command `ScriptSyncStart` in RhinoV8. This will start a server that listens to commands from VSCode.
+🦏 **`Rhino`**: To start `script-sync` in RhinoV8, run the command `ScriptSyncStart` in RhinoV8. This will start a server that listens to commands from VSCode. Python3 is automatically initialized on start.
 To close `script-sync` in RhinoV8, run the command `ScriptSyncStop` in RhinoV8.
 
 🦗 **`Grasshopper`**: To start `script-sync` in Grasshopper, add the component script-sync: <code>btn</code>: click to open a file explorer and connect a script, <code>x</code>: classical input parameter, you can add more, <code>stdout</code>: all errors and print() is deviated here, <code>a</code>: classical output parameter, you can add more.

@@ -37,10 +37,15 @@ namespace ScriptSync
             return Rhino.Commands.Result.Success;
         }
 
+        public bool IsRunning()
+        {
+            return ScriptSyncStart.Instance != null && ScriptSyncStart.Instance.IsRunning;
+        }
+
         /// <summary>
         /// It is called on a thread to run the server and listen for incoming paths to run.
         /// </summary>
-        private void Stop()
+        public void Stop()
         {
             ScriptSyncStart.Instance.IsRunning = false;
             using (TcpClient client = new TcpClient())

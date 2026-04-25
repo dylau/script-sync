@@ -2,6 +2,7 @@
 
 import socket
 
+
 def send_file(server_address, server_port):
     # Create a TCP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -19,8 +20,9 @@ def send_file(server_address, server_port):
     client_socket.close()
     print(f"File path sent successfully.")
 
+
 if __name__ == "__main__":
-    server_address = '127.0.0.1'  # Change this to the server's IP address
-    server_port = 58259  # Change this to the server's port number
+    server_address = "127.0.0.1"  # Change this to the server's IP address
+    server_port = 58258  # Change this to the server's port number
 
     send_file(server_address, server_port)
