@@ -26,4 +26,7 @@ try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catc
 ## Status
 - [ ] Open
 - [ ] In Progress
-- [ ] Resolved
+- [x] Resolved
+
+## Resolution
+Replaced the single `try/catch` block after running the wrapper script with a retry loop that uses exponential backoff (5 retries, starting at 100ms, doubling each time). This handles cases where Rhino's script editor takes longer to release the file handle.

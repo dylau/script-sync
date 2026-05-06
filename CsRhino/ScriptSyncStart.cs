@@ -257,7 +257,30 @@ namespace ScriptSync
 
                     Thread.Sleep(500);
 
-                    try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not delete wrapper script: " + ex.Message); }
+                    // Retry wrapper deletion with exponential backoff to handle slow script close
+                    int maxRetries = 5;
+                    int delayMs = 100;
+                    for (int retry = 0; retry < maxRetries; retry++)
+                    {
+                        try
+                        {
+                            if (!File.Exists(wrappedScriptPath)) break;
+                            File.Delete(wrappedScriptPath);
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            if (retry < maxRetries - 1)
+                            {
+                                Thread.Sleep(delayMs);
+                                delayMs *= 2;
+                            }
+                            else
+                            {
+                                RhinoApp.WriteLine("ScriptSync warning: could not delete wrapper script after " + maxRetries + " attempts: " + ex.Message);
+                            }
+                        }
+                    }
                 }
                 else
                 {
