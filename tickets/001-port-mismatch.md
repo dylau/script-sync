@@ -21,7 +21,7 @@ PORT = 58258  # Was 58259
 ```
 
 ## Status
-- [x] Open
+- [ ] Open
 - [ ] In Progress
 - [x] Resolved
 
