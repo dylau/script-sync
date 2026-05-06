@@ -30,4 +30,7 @@ if os.path.exists(error_file):
 ## Status
 - [ ] Open
 - [ ] In Progress
-- [ ] Resolved
+- [x] Resolved
+
+## Resolution
+Replaced the simple empty-file check with a file-size stability check (2 consecutive polls with same size). The script now waits until the error file size is stable before reading, preventing false success when Rhino is still writing. Also handles OSError (locked file) gracefully by resetting the stability counter.
