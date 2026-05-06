@@ -29,4 +29,7 @@ client.on('data', (data) => {
 ## Status
 - [ ] Open
 - [ ] In Progress
-- [ ] Resolved
+- [x] Resolved
+
+## Resolution
+Added `client.end()` call after handling response in the `client.on('data')` handler in `VSCode/scriptsync/src/extension.ts`. This ensures the TCP socket is properly closed after receiving Rhino's response.

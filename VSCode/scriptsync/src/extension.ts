@@ -135,6 +135,7 @@ export function activate(context: vscode.ExtensionContext) {
             } catch {
                 outputChannel.appendLine('Raw response: ' + data.toString());
             }
+            client.end(); // Close connection after response received
         });
 
         activeTextEditor.document.save().then(() => {
