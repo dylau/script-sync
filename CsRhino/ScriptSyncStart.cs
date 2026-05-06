@@ -158,7 +158,7 @@ namespace ScriptSync
                 byte[] data = new byte[4096];
                 NetworkStream stream = client.GetStream();
                 int bytesRead = stream.Read(data, 0, data.Length);
-                string scriptPath = Encoding.ASCII.GetString(data, 0, bytesRead).Trim();
+                string scriptPath = Encoding.UTF8.GetString(data, 0, bytesRead).Trim();
 
                 if (bytesRead == 0 || scriptPath == "__SCRIPTSYNC_STOP__")
                 {

@@ -23,4 +23,7 @@ string scriptPath = Encoding.UTF8.GetString(data, 0, bytesRead).Trim();
 ## Status
 - [ ] Open
 - [ ] In Progress
-- [ ] Resolved
+- [x] Resolved
+
+## Resolution
+Changed `Encoding.ASCII` to `Encoding.UTF8` in `CsRhino/ScriptSyncStart.cs` line ~128 to properly handle non-ASCII paths.
