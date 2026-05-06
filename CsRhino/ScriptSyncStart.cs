@@ -147,7 +147,7 @@ namespace ScriptSync
                         RhinoApp.RunScript("_-ScriptEditor _Run \"" + initScriptPath + "\"", true);
                         RhinoApp.WriteLine("Python initialized with importlib");
                     }
-                    catch { }
+                    catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run init script: " + ex.Message); }
                 }));
             }
 
@@ -179,7 +179,7 @@ namespace ScriptSync
 
                 if (scriptExt == ".py")
                 {
-                    try { if (File.Exists(errorFilePath)) File.Delete(errorFilePath); } catch { }
+                    try { if (File.Exists(errorFilePath)) File.Delete(errorFilePath); } catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not delete error file: " + ex.Message); }
 
                     string wrappedScriptPath = System.IO.Path.Combine(scriptDir, ".__scsy_wrapper__.py");
                     string originalCode = File.ReadAllText(cleanPath, Encoding.UTF8);
@@ -208,12 +208,12 @@ namespace ScriptSync
                         {
                             RhinoApp.RunScript("_-ScriptEditor _Run \"" + wrappedScriptPath + "\"", true);
                         }
-                        catch { }
+                        catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run wrapped script: " + ex.Message); }
                     }));
 
                     Thread.Sleep(500);
 
-                    try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catch { }
+                    try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not delete wrapper script: " + ex.Message); }
                 }
                 else
                 {
@@ -223,7 +223,7 @@ namespace ScriptSync
                         {
                             RhinoApp.RunScript("_-ScriptEditor _Run \"" + cleanPath + "\"", true);
                         }
-                        catch { }
+                        catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run script: " + ex.Message); }
                     }));
                 }
 
@@ -235,7 +235,7 @@ namespace ScriptSync
                     stream.Write(responseBytes, 0, responseBytes.Length);
                     stream.Flush();
                 }
-                catch { }
+                catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not send response: " + ex.Message); }
 
                 client.Close();
             }
