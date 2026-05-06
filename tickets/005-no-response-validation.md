@@ -22,4 +22,13 @@ Implement proper response handling:
 ## Status
 - [ ] Open
 - [ ] In Progress
-- [ ] Resolved
+- [x] Resolved
+
+## Resolution
+Fixed in `C:\Users\uk083720\.pi\agent\skills\rhipy\sync_to_rhino.py`:
+- Added `import json`
+- Changed to use `sendall()` and `shutdown(SHUT_WR)` for proper connection shutdown
+- Added response receive loop to collect Rhino's JSON response
+- Parse response JSON and check `success` field
+- Exit with error if Rhino rejected the script (`success: false`)
+- Handle JSON parse errors with warning message
