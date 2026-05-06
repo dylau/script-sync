@@ -21,6 +21,9 @@ PORT = 58258  # Was 58259
 ```
 
 ## Status
-- [ ] Open
+- [x] Open
 - [ ] In Progress
-- [ ] Resolved
+- [x] Resolved
+
+## Resolution
+Fixed port mismatch in `C:\Users\uk083720\.pi\agent\skills\rhipy\sync_to_rhino.py`: changed PORT from 58259 to 58258 to match Rhino plugin.
