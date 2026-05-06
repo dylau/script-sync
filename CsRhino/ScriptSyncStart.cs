@@ -210,10 +210,11 @@ namespace ScriptSync
                     bool syntaxError = false;
                     RhinoApp.InvokeOnUiThread(new Action(() =>
                     {
-                        try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + syntaxCheckRunnerPath + "\"", true); } catch { }
+                        try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + syntaxCheckRunnerPath + "\"", true); }
+                        catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run syntax check: " + ex.Message); }
                     }));
                     Thread.Sleep(300);
-                    try { if (File.Exists(syntaxCheckRunnerPath)) File.Delete(syntaxCheckRunnerPath); } catch { }
+                    try { if (File.Exists(syntaxCheckRunnerPath)) File.Delete(syntaxCheckRunnerPath); } catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not delete syntax check file: " + ex.Message); }
 
                     if (File.Exists(errorFilePath))
                     {
@@ -226,9 +227,9 @@ namespace ScriptSync
                     if (syntaxError)
                     {
                         // Clean up and return error
-                        try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catch { }
+                        try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not delete wrapper script: " + ex.Message); }
                         byte[] syntaxErrorResponse = Encoding.ASCII.GetBytes(resultJson);
-                        try { stream.Write(syntaxErrorResponse, 0, syntaxErrorResponse.Length); stream.Flush(); } catch { }
+                        try { stream.Write(syntaxErrorResponse, 0, syntaxErrorResponse.Length); stream.Flush(); } catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not send syntax error response: " + ex.Message); }
                         client.Close();
                         continue;
                     }

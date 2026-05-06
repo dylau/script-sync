@@ -27,9 +27,11 @@ catch (Exception ex) { RhinoApp.WriteLine("Warning: Could not delete error file:
 - [x] Resolved
 
 ## Resolution
-Replaced all 6 empty `catch { }` blocks in `CsRhino/ScriptSyncStart.cs` with logging via `RhinoApp.WriteLine()`:
+Replaced all 8 empty `catch { }` blocks in `CsRhino/ScriptSyncStart.cs` with logging via `RhinoApp.WriteLine()`:
 - Init script run → `ScriptSync warning: could not run init script: {ex.Message}`
 - Error file deletion → `ScriptSync warning: could not delete error file: {ex.Message}`
+- Syntax check runner → `ScriptSync warning: could not run syntax check: {ex.Message}`
+- Syntax check file deletion → `ScriptSync warning: could not delete syntax check file: {ex.Message}`
 - Wrapped script run → `ScriptSync warning: could not run wrapped script: {ex.Message}`
 - Wrapper script deletion → `ScriptSync warning: could not delete wrapper script: {ex.Message}`
 - Non-Python script run → `ScriptSync warning: could not run script: {ex.Message}`
