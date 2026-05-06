@@ -191,7 +191,50 @@ namespace ScriptSync
                         originalCode = originalCode.Substring(newlineIdx + 1);
                     }
 
-                    string wrappedCode = shebang + 
+                    // First write original code and check syntax with py_compile
+                    File.WriteAllText(wrappedScriptPath, shebang + originalCode, Encoding.UTF8);
+
+                    string syntaxCheckRunner = "import py_compile\n" +
+                        "try:\n" +
+                        "    py_compile.compile(r\"" + wrappedScriptPath.Replace("\\", "\\\\") + "\", doraise=True)\n" +
+                        "except py_compile.PyCompileError as e:\n" +
+                        "    with open(r\"" + errorFilePath.Replace("\\", "\\\\") + "\", 'w') as f:\n" +
+                        "        f.write('SyntaxError: ' + str(e))\n" +
+                        "    import sys\n" +
+                        "    sys.exit(1)\n";
+
+                    string syntaxCheckRunnerPath = System.IO.Path.Combine(scriptDir, ".__scsy_syntax_runner__.py");
+                    File.WriteAllText(syntaxCheckRunnerPath, syntaxCheckRunner, Encoding.UTF8);
+
+                    // Run syntax check synchronously by checking file existence after delay
+                    bool syntaxError = false;
+                    RhinoApp.InvokeOnUiThread(new Action(() =>
+                    {
+                        try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + syntaxCheckRunnerPath + "\"", true); } catch { }
+                    }));
+                    Thread.Sleep(300);
+                    try { if (File.Exists(syntaxCheckRunnerPath)) File.Delete(syntaxCheckRunnerPath); } catch { }
+
+                    if (File.Exists(errorFilePath))
+                    {
+                        syntaxError = true;
+                        string errorContent = File.ReadAllText(errorFilePath, Encoding.UTF8);
+                        RhinoApp.WriteLine("ScriptSync: SyntaxError in " + scriptName + scriptExt + "\n" + errorContent);
+                        resultJson = "{\"success\":false,\"error\":\"" + EscapeJsonString(errorContent) + "\"}";
+                    }
+
+                    if (syntaxError)
+                    {
+                        // Clean up and return error
+                        try { if (File.Exists(wrappedScriptPath)) File.Delete(wrappedScriptPath); } catch { }
+                        byte[] syntaxErrorResponse = Encoding.ASCII.GetBytes(resultJson);
+                        try { stream.Write(syntaxErrorResponse, 0, syntaxErrorResponse.Length); stream.Flush(); } catch { }
+                        client.Close();
+                        continue;
+                    }
+
+                    // Now wrap with try/except for runtime errors
+                    string wrappedCode = shebang +
                         "import sys, traceback\n" +
                         "try:\n" +
                         "    " + originalCode.Replace("\n", "\n    ") + "\n" +
