@@ -26,4 +26,7 @@ const RHINO_TCP_HOST = '127.0.0.1';
 ## Status
 - [ ] Open
 - [ ] In Progress
-- [ ] Resolved
+- [x] Resolved
+
+## Resolution
+Defined port as module-level constants (`const port = 58258` and `const host = '127.0.0.1'`) and replaced the hardcoded values in `client.connect()` call in `VSCode/scriptsync/src/extension.ts`.
