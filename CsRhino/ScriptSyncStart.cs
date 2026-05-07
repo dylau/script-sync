@@ -57,6 +57,7 @@ namespace ScriptSync
             {
                 _server = new TcpListener(IPAddress.Parse(Ip), Port);
                 _server.Start();
+                RhinoApp.WriteLine("ScriptSync listening on {0}:{1}", Ip, Port);
             }
             catch (Exception e)
             {
@@ -70,6 +71,7 @@ namespace ScriptSync
                     {
                         _server = new TcpListener(IPAddress.Parse(Ip), Port);
                         _server.Start();
+                        RhinoApp.WriteLine("ScriptSync listening on {0}:{1}", Ip, Port);
                     }
                     catch (Exception ex)
                     {
