@@ -108,3 +108,57 @@ There are a lot of plug-ins that allow to run Python in Rhino. Among them, [Code
 
 # For code maintainers
 Packages are published (`.yak` and `.vsix`)  automatically when a GitHub release is created.
+
+## Architecture
+
+### Components
+
+| Component | File(s) | Role |
+|---|---|---|
+| VSCode extension | `VSCode/scriptsync/src/extension.ts` | Sends script path to Rhino via TCP on F4 |
+| Rhino plugin | `CsRhino/ScriptSyncStart.cs` | Receives path, runs script, handles errors |
+| Grasshopper component | `GH/PyGH/components/` | Runs Python in Grasshopper |
+
+### TCP Connection
+
+| Direction | Host | Port |
+|---|---|---|
+| VSCode → Rhino | `127.0.0.1` | `58258` |
+| Rhino → VSCode | `127.0.0.1` | `58260` |
+
+### Flow: VSCode → Rhino (F4)
+
+1. **Save** — active file is saved
+2. **Send** — VSCode extension sends file path via TCP to `127.0.0.1:58258`
+3. **Rhino receives** — `ScriptSyncStart.cs` reads the path
+4. **Syntax check** — for `.py` files: `py_compile` validates syntax; if invalid, writes to `[script].py.error` and returns error immediately
+5. **Wrap** — script is wrapped with `try/except` + `traceback` to catch runtime errors
+6. **Execute** — script is passed to Rhino's `ScriptEditor`
+7. **Response** — Rhino sends JSON over TCP: `{"success": true/false, "error": "..."}`
+8. **Feedback** — VSCode output channel shows result; on error, a popup shows the first error line
+
+### Error Handling Events
+
+For `.py` files, error files are created at `[scriptpath].py.error`:
+
+| Event | `.error` file |
+|---|---|
+| Before every run | Deleted if it exists |
+| Syntax error | Written with `py_compile` output |
+| Runtime error | Written with `traceback` |
+| Success | **Not touched** — no file left |
+
+A present `.error` file always means the last run failed.
+
+
+### Shebang Selection
+
+| Shebang | Runtime |
+|---|---|
+| `#! python3` | CPython (Rhino + Grasshopper) |
+| `#! python2` | IronPython (Rhino only) |
+| `.cs` | C# (Rhino only) |
+
+> [!NOTE]
+> The shebang is ignored on Windows for IronPython CPython targets — Rhino's `ScriptEditor` selects the interpreter internally based on the shebang in the script.
+
