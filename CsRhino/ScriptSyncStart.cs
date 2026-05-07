@@ -138,20 +138,17 @@ namespace ScriptSync
             _server.Start();
             IsRunning = true;
 
-            // Run init Python file to initialize Python3 in Rhino
-            string initScriptPath = @"C:\Users\uk083720\.rhinocode\py39-rh8\lib\importlib\__init__.py";
-            if (System.IO.File.Exists(initScriptPath))
+            // Run init Python file to warm up Python3 in Rhino
+            string initScriptPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "__scriptsync_init__.py");
+            if (!System.IO.File.Exists(initScriptPath))
             {
-                RhinoApp.InvokeOnUiThread(new Action(() =>
-                {
-                    try
-                    {
-                        RhinoApp.RunScript("_-ScriptEditor _Run \"" + initScriptPath + "\"", true);
-                        RhinoApp.WriteLine("Python initialized with importlib");
-                    }
-                    catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run init script: " + ex.Message); }
-                }));
+                System.IO.File.WriteAllText(initScriptPath, "#! python3\nimport sys; print('ScriptSync: Python', sys.version.split()[0], 'ready', flush=True)", Encoding.UTF8);
             }
+            RhinoApp.InvokeOnUiThread(new Action(() =>
+            {
+                try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + initScriptPath + "\"", true); }
+                catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run init script: " + ex.Message); }
+            }));
 
             while (IsRunning)
             {
