@@ -134,10 +134,43 @@ namespace ScriptSync
         public void Run()
         {
             // Enable SO_REUSEADDR to allow reusing the port after restart
-            _server.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _server.Start();
-            IsRunning = true;
+            try
+            {
+                _server.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _server.Start();
+                IsRunning = true;
+            }
+            catch (Exception e)
+            {
+                RhinoApp.WriteLine("ScriptSync: failed to start TCP listener: " + e.Message);
+                IsRunning = false;
+                return;
+            }
 
+            try
+            {
+                RunInner();
+            }
+            catch (Exception e)
+            {
+                RhinoApp.WriteLine("ScriptSync: worker thread crashed: " + e.Message);
+            }
+            finally
+            {
+                // Always release the OS-level socket so a subsequent
+                // ScriptSyncStart can rebind to the same port.
+                try { _server.Stop(); } catch { }
+                try { _server.Server.Close(); } catch { }
+                IsRunning = false;
+                RhinoApp.InvokeOnUiThread(new Action(() =>
+                {
+                    RhinoApp.WriteLine("ScriptSync stopped");
+                }));
+            }
+        }
+
+        private void RunInner()
+        {
             // Run init Python file to warm up Python3 in Rhino
             string initScriptPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "__scriptsync_init__.py");
             if (!System.IO.File.Exists(initScriptPath))
@@ -353,11 +386,6 @@ namespace ScriptSync
 
                 client.Close();
             }
-            _server.Stop();
-            RhinoApp.InvokeOnUiThread(new Action(() =>
-            {
-                RhinoApp.WriteLine("ScriptSync stopped");
-            }));
         }
 
         private string EscapeJsonString(string s)
