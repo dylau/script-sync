@@ -144,11 +144,18 @@ namespace ScriptSync
             {
                 System.IO.File.WriteAllText(initScriptPath, "#! python3\nimport sys; print('ScriptSync: Python', sys.version.split()[0], 'ready', flush=True)", Encoding.UTF8);
             }
-            RhinoApp.InvokeOnUiThread(new Action(() =>
+            if (!System.IO.File.Exists(initScriptPath))
             {
-                try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + initScriptPath + "\"", true); }
-                catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run init script: " + ex.Message); }
-            }));
+                RhinoApp.WriteLine("ScriptSync: init script missing, skipping warm-up: " + initScriptPath);
+            }
+            else
+            {
+                RhinoApp.InvokeOnUiThread(new Action(() =>
+                {
+                    try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + initScriptPath + "\"", true); }
+                    catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run init script: " + ex.Message); }
+                }));
+            }
 
             while (IsRunning)
             {
@@ -190,8 +197,23 @@ namespace ScriptSync
                         originalCode = originalCode.Substring(newlineIdx + 1);
                     }
 
+                    // Hoist `from __future__` imports to the top of the file.
+                    // CPython requires these to be the first statements in a module
+                    // (after the optional shebang / module docstring).
+                    // We capture them in `futureImports` and strip them out of `originalCode`,
+                    // then prepend `futureImports` separately when assembling the wrapper.
+                    var futureMatches = System.Text.RegularExpressions.Regex.Matches(
+                        originalCode,
+                        @"^[ \t]*from __future__[^\n]*\n",
+                        System.Text.RegularExpressions.RegexOptions.Multiline);
+                    string futureImports = "";
+                    foreach (System.Text.RegularExpressions.Match m in futureMatches)
+                        futureImports += m.Value;
+                    if (futureMatches.Count > 0)
+                        originalCode = originalCode.Replace(futureImports, "");
+
                     // First write original code and check syntax with py_compile
-                    File.WriteAllText(wrappedScriptPath, shebang + originalCode, Encoding.UTF8);
+                    File.WriteAllText(wrappedScriptPath, shebang + futureImports + originalCode, Encoding.UTF8);
 
                     string syntaxCheckRunner = "import py_compile\n" +
                         "try:\n" +
@@ -207,11 +229,18 @@ namespace ScriptSync
 
                     // Run syntax check synchronously by checking file existence after delay
                     bool syntaxError = false;
-                    RhinoApp.InvokeOnUiThread(new Action(() =>
+                    if (!System.IO.File.Exists(syntaxCheckRunnerPath))
                     {
-                        try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + syntaxCheckRunnerPath + "\"", true); }
-                        catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run syntax check: " + ex.Message); }
-                    }));
+                        RhinoApp.WriteLine("ScriptSync: syntax check runner missing, skipping: " + syntaxCheckRunnerPath);
+                    }
+                    else
+                    {
+                        RhinoApp.InvokeOnUiThread(new Action(() =>
+                        {
+                            try { RhinoApp.RunScript("_-ScriptEditor _Run \"" + syntaxCheckRunnerPath + "\"", true); }
+                            catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run syntax check: " + ex.Message); }
+                        }));
+                    }
                     Thread.Sleep(300);
                     try { if (File.Exists(syntaxCheckRunnerPath)) File.Delete(syntaxCheckRunnerPath); } catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not delete syntax check file: " + ex.Message); }
 
@@ -233,8 +262,11 @@ namespace ScriptSync
                         continue;
                     }
 
-                    // Now wrap with try/except for runtime errors
+                    // Now wrap with try/except for runtime errors.
+                    // Keep try/except wrapper unconditional so empty / future-only
+                    // scripts still capture errors to *.py.error.
                     string wrappedCode = shebang +
+                        futureImports +
                         "import sys, traceback\n" +
                         "try:\n" +
                         "    " + originalCode.Replace("\n", "\n    ") + "\n" +
@@ -245,14 +277,22 @@ namespace ScriptSync
 
                     File.WriteAllText(wrappedScriptPath, wrappedCode, Encoding.UTF8);
 
-                    RhinoApp.InvokeOnUiThread(new Action(() =>
+                    if (!System.IO.File.Exists(wrappedScriptPath))
                     {
-                        try
+                        RhinoApp.WriteLine("ScriptSync: wrapped script missing, skipping run: " + wrappedScriptPath);
+                        resultJson = "{\"success\":false,\"error\":\"wrapper script missing\"}";
+                    }
+                    else
+                    {
+                        RhinoApp.InvokeOnUiThread(new Action(() =>
                         {
-                            RhinoApp.RunScript("_-ScriptEditor _Run \"" + wrappedScriptPath + "\"", true);
-                        }
-                        catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run wrapped script: " + ex.Message); }
-                    }));
+                            try
+                            {
+                                RhinoApp.RunScript("_-ScriptEditor _Run \"" + wrappedScriptPath + "\"", true);
+                            }
+                            catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run wrapped script: " + ex.Message); }
+                        }));
+                    }
 
                     Thread.Sleep(500);
 
@@ -283,14 +323,22 @@ namespace ScriptSync
                 }
                 else
                 {
-                    RhinoApp.InvokeOnUiThread(new Action(() =>
+                    if (!System.IO.File.Exists(cleanPath))
                     {
-                        try
+                        RhinoApp.WriteLine("ScriptSync: script not found, skipping: " + cleanPath);
+                        resultJson = "{\"success\":false,\"error\":\"file not found\"}";
+                    }
+                    else
+                    {
+                        RhinoApp.InvokeOnUiThread(new Action(() =>
                         {
-                            RhinoApp.RunScript("_-ScriptEditor _Run \"" + cleanPath + "\"", true);
-                        }
-                        catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run script: " + ex.Message); }
-                    }));
+                            try
+                            {
+                                RhinoApp.RunScript("_-ScriptEditor _Run \"" + cleanPath + "\"", true);
+                            }
+                            catch (Exception ex) { RhinoApp.WriteLine("ScriptSync warning: could not run script: " + ex.Message); }
+                        }));
+                    }
                 }
 
                 Thread.Sleep(100);
