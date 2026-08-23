@@ -42,6 +42,12 @@
           "when": "editorTextFocus"
       },
       {
+          "command": "scriptsync.sendPath",
+          "key": "ctrl+alt+r",
+          "mac": "ctrl+alt+r",
+          "when": "editorTextFocus"
+      },
+      {
           "command": "scriptsync.toggleGH",
           "key": "shift+f4",
           "mac": "shift+f4",
