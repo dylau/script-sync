@@ -8,6 +8,10 @@
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 
+# Node.js dependencies (npm/yarn/pnpm)
+node_modules/
+**/node_modules/
+
 # Local History for Visual Studio Code
 .history/
 
