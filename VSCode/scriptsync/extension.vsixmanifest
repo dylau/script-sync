@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+  <Metadata>
+    <Identity Language="en-US" Id="script-sync" Version="1.2.29" Publisher="ibois-epfl" />
+    <DisplayName>script-sync</DisplayName>
+    <Description xml:space="preserve">script-sync allows to run C# and Python (IronPython or CPython) in Rhino8 directly from VSCode.</Description>
+    <Icon>logo/scriptsync_480.png</Icon>
+    <Author>
+      <DisplayName>Andrea Settimi</DisplayName>
+      <Name>Andrea Settimi</Name>
+      <Email>andrea.settimi@epfl.ch</Email>
+    </Author>
+    <License>LICENSE.md</License>
+    <Repository Type="git" Url="https://github.com/ibois-epfl/script-sync" />
+    <Tags>rhino,python,cs</Tags>
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Code" Version="[1.85.0,)" />
+  </Installation>
+  <Dependencies />
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="package.json" Addressable="true" />
+    <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="logo/scriptsync_480.png" Addressable="true" />
+  </Assets>
+</PackageManifest>

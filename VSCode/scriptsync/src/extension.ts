@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import * as net from 'net';
 import * as path from 'path';
+import * as fs from 'fs';
 
 let server: net.Server | null = null;
 let connections: net.Socket[] = [];
@@ -10,9 +11,15 @@ let isLogging = false;
 
 const RHINO_TCP_PORT = 58258;
 const RHINO_TCP_HOST = '127.0.0.1';
+const RHINO_PYTHON_PATH = 'C:\\Users\\uk083720\\.rhinocode\\py39-rh8\\python.exe';
 
 const outputChannel = vscode.window.createOutputChannel('scriptsync');
 let lastReceivedMessage: { guid: any; } | null = null;
+
+// Cached sys.path diff for the current VS Code session.
+// Resolved once on first F4 send, reused for subsequent sends.
+let cachedPathDiff: string[] | null = null;
+let pathDiffResolveAttempted = false;
 
 function startServer() {
     isLogging = true;
@@ -81,13 +88,134 @@ function silenceServer() {
     }
 }
 
+// Read sys.path from a Python interpreter by spawning it as a subprocess.
+// Pass source via stdin so quoting/newlines stay safe.
+async function readSysPath(interpreterPath: string): Promise<string[]> {
+    return new Promise((resolve) => {
+        const proc = require('child_process').spawn(
+            interpreterPath,
+            ['-'],
+            {
+                shell: false,
+                timeout: 5000,
+                windowsHide: true
+            }
+        );
+
+        let stdout = '';
+        let stderr = '';
+        proc.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+        proc.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+        proc.on('close', (code: number | null) => {
+            if (code === 0 && stdout.trim()) {
+                try {
+                    const parsed = JSON.parse(stdout.trim());
+                    if (Array.isArray(parsed)) {
+                        resolve(parsed.filter((p): p is string => typeof p === 'string'));
+                        return;
+                    }
+                } catch { /* fall through */ }
+            }
+            outputChannel.appendLine(
+                `[scriptsync] readSysPath failed for ${interpreterPath} (code=${code}, stderr=${stderr.trim()})`
+            );
+            resolve([]);
+        });
+
+        proc.on('error', (err: Error) => {
+            outputChannel.appendLine(`[scriptsync] readSysPath error for ${interpreterPath}: ${err.message}`);
+            resolve([]);
+        });
+
+        proc.stdin.write('import sys, json\nprint(json.dumps(sys.path))\n');
+        proc.stdin.end();
+
+        // Force-timeout after 5 seconds
+        setTimeout(() => {
+            try { proc.kill(); } catch { /* ignore */ }
+            resolve([]);
+        }, 5000);
+    });
+}
+
+// Compute the sys.path diff between the VS Code conda env and Rhino's Python.
+// Returns paths that exist in the conda env but not in Rhino (case-insensitive).
+// Excludes conda env's Python stdlib paths (lib/, DLLs/, python39.zip) — they
+// shadow Rhino's own stdlib and cause DLL load failures on cross-version imports.
+async function resolvePathDiff(): Promise<string[]> {
+    const condaPath = vscode.workspace
+        .getConfiguration('python')
+        .get<string>('defaultInterpreterPath', '');
+    if (!condaPath) return [];
+
+    const [condaSysPath, rhinoSysPath] = await Promise.all([
+        readSysPath(condaPath),
+        readSysPath(RHINO_PYTHON_PATH)
+    ]);
+
+    if (condaSysPath.length === 0) return [];
+
+    const normalize = (p: string) => p.toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
+    const rhinoLower = new Set(rhinoSysPath.map(normalize));
+
+    // Skip conda env's own Python runtime directories (stdlib + DLLs + zip).
+    // These would shadow Rhino's bundled Python 3.9.10 stdlib and break
+    // extension modules like `_ctypes` (built against a different Python ABI).
+    const isStdlibPath = (p: string): boolean => {
+        const lower = p.toLowerCase().replace(/\\/g, '/');
+        if (lower.endsWith('/dlls')) return true;
+        if (lower.endsWith('/lib')) return true;
+        if (lower.endsWith('.zip')) return true;
+        // Match /lib/pythonX.Y/ ... (the actual stdlib directory inside conda env)
+        const m = lower.match(/^(.+?\/lib)\/python\d+\.\d+(?:\/.*)?$/);
+        return !!m;
+    };
+
+    return condaSysPath.filter(p => {
+        const n = normalize(p);
+        if (rhinoLower.has(n)) return false;
+        if (isStdlibPath(p)) return false;
+        return true;
+    });
+}
+
+// Build the sys.path insertion string to prepend to the script.
+// Accepts a list of paths (the diff result) and emits one insert per path.
+function buildPathInsertion(paths: string[]): string {
+    if (paths.length === 0) return '';
+    const inserts = paths
+        .map(p => `sys.path.insert(0, r'${p.replace(/\\/g, '/')}')`)
+        .join('\n');
+    return `import sys\n${inserts}\n`;
+}
+
+// Write a modified copy of the script with sys.path prepended to a temp file.
+// Returns the path to the temp file.
+function writeTempScript(originalPath: string, paths: string[]): string {
+    const dir = path.dirname(originalPath);
+    const basename = path.basename(originalPath);
+    const tempName = `.${basename}__scsy_send__.py`;
+    const tempPath = path.join(dir, tempName);
+
+    const originalContent = fs.readFileSync(originalPath, 'utf-8');
+    const pathInsertion = buildPathInsertion(paths);
+    const modifiedContent = pathInsertion + originalContent;
+
+    fs.writeFileSync(tempPath, modifiedContent, 'utf-8');
+    outputChannel.appendLine(
+        `[scriptsync] wrote temp script with ${paths.length} injected paths: ${tempPath}`
+    );
+    return tempPath;
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-    //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    //%% Rhino
-    //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    let rhinoSenderCmd = vscode.commands.registerCommand('scriptsync.sendPath', () => {
+    // % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+    // %% Rhino
+    // % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+    let rhinoSenderCmd = vscode.commands.registerCommand('scriptsync.sendPath', async () => {
         console.log('scriptsync.sendPath command triggered');
         outputChannel.appendLine('F4 pressed - sending to Rhino');
         vscode.window.showInformationMessage('scriptsync::Sending to Rhino...');
@@ -109,14 +237,55 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
+        const originalPath = activeTextEditor.document.uri.fsPath;
+
+        // Refuse to re-process our own temp files (they start with a dot
+        // and end with __scsy_send__.py) — otherwise repeated F4 would
+        // chain: main.py → .main.py__scsy_send__.py → ..main.py__scsy_send__.py__scsy_send__.py
+        if (path.basename(originalPath).endsWith('__scsy_send__.py')) {
+            outputChannel.appendLine(`[scriptsync] ignoring own temp file: ${originalPath}`);
+            return;
+        }
+
+        // --- Resolve sys.path diff lazily once per session ---
+        if (!pathDiffResolveAttempted) {
+            pathDiffResolveAttempted = true;
+            const config = vscode.workspace.getConfiguration('python');
+            const interpreterPath = config.get<string>('defaultInterpreterPath', '');
+            if (interpreterPath) {
+                cachedPathDiff = await resolvePathDiff();
+                if (!cachedPathDiff || cachedPathDiff.length === 0) {
+                    outputChannel.appendLine('[scriptsync] WARNING: could not compute sys.path diff. Sending without path injection.');
+                } else {
+                    outputChannel.appendLine(`[scriptsync] resolved ${cachedPathDiff.length} paths to inject`);
+                }
+            } else {
+                outputChannel.appendLine('[scriptsync] WARNING: python.defaultInterpreterPath not set. Sending without path injection.');
+            }
+        }
+
+        // --- Build the payload: either with sys.path.prepend, or original ---
+        let payloadPath = originalPath;
+
+        if (cachedPathDiff && cachedPathDiff.length > 0) {
+            try {
+                payloadPath = writeTempScript(originalPath, cachedPathDiff);
+            } catch (err: any) {
+                outputChannel.appendLine(`[scriptsync] ERROR writing temp script: ${err.message}. Falling back to original.`);
+                payloadPath = originalPath;
+            }
+        } else {
+            outputChannel.appendLine('[scriptsync] Sending original script (no path injection).');
+        }
+
         const client = new net.Socket();
 
-        client.on('error', (error) => {
+        client.on('error', (error: Error) => {
             vscode.window.showErrorMessage('scriptsync::Run ScriptSyncStart on Rhino first.');
             console.error('Error: ', error);
         });
 
-        client.on('data', (data) => {
+        client.on('data', (data: Buffer) => {
             console.log('Received data:', data.toString());
             try {
                 const response = JSON.parse(data.toString());
@@ -141,20 +310,22 @@ export function activate(context: vscode.ExtensionContext) {
             client.end(); // Close connection after response received
         });
 
+        // Save the document, then send
         activeTextEditor.document.save().then(() => {
             client.connect(port, host, () => {
                 outputChannel.appendLine('Connected to Rhino');
-                const activeDocumentPath = activeTextEditor.document.uri.path;
-                outputChannel.appendLine('Sending: ' + activeDocumentPath);
-                client.write(activeDocumentPath);
+                // Use the resolved payload path (original or temp)
+                const sendPath = payloadPath;
+                outputChannel.appendLine('Sending: ' + sendPath);
+                client.write(sendPath);
             });
         });
     });
     context.subscriptions.push(rhinoSenderCmd);
 
-    //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    //%% Grasshopper
-    //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    // % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+    // %% Grasshopper
+    // % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
     let ghListenerCmd = vscode.commands.registerCommand('scriptsync.toggleGH', () => {
         // const outputChannel = vscode.window.createOutputChannel('scriptsync');
         outputChannel.show(true);
@@ -179,4 +350,3 @@ export function deactivate() {
         });
     }
 }
-
