@@ -264,20 +264,6 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
 
-        // --- Build the payload: either with sys.path.prepend, or original ---
-        let payloadPath = originalPath;
-
-        if (cachedPathDiff && cachedPathDiff.length > 0) {
-            try {
-                payloadPath = writeTempScript(originalPath, cachedPathDiff);
-            } catch (err: any) {
-                outputChannel.appendLine(`[scriptsync] ERROR writing temp script: ${err.message}. Falling back to original.`);
-                payloadPath = originalPath;
-            }
-        } else {
-            outputChannel.appendLine('[scriptsync] Sending original script (no path injection).');
-        }
-
         const client = new net.Socket();
 
         client.on('error', (error: Error) => {
@@ -310,14 +296,27 @@ export function activate(context: vscode.ExtensionContext) {
             client.end(); // Close connection after response received
         });
 
-        // Save the document, then send
+        // Save the document, then build the temp script and send.
+        // IMPORTANT: writeTempScript must run AFTER save completes so that
+        // fs.readFileSync reads the latest version from disk (not VS Code's
+        // in-memory buffer, which may not yet be flushed).
         activeTextEditor.document.save().then(() => {
+            let payloadPath = originalPath;
+            if (cachedPathDiff && cachedPathDiff.length > 0) {
+                try {
+                    payloadPath = writeTempScript(originalPath, cachedPathDiff);
+                } catch (err: any) {
+                    outputChannel.appendLine(`[scriptsync] ERROR writing temp script: ${err.message}. Falling back to original.`);
+                    payloadPath = originalPath;
+                }
+            } else {
+                outputChannel.appendLine('[scriptsync] Sending original script (no path injection).');
+            }
+
             client.connect(port, host, () => {
                 outputChannel.appendLine('Connected to Rhino');
-                // Use the resolved payload path (original or temp)
-                const sendPath = payloadPath;
-                outputChannel.appendLine('Sending: ' + sendPath);
-                client.write(sendPath);
+                outputChannel.appendLine('Sending: ' + payloadPath);
+                client.write(payloadPath);
             });
         });
     });
