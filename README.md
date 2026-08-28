@@ -162,3 +162,20 @@ A present `.error` file always means the last run failed.
 > [!NOTE]
 > The shebang is ignored on Windows for IronPython CPython targets — Rhino's `ScriptEditor` selects the interpreter internally based on the shebang in the script.
 
+## Local Development: Conda Env Alignment
+
+When developing Python packages (e.g. editable installs via `pip install -e`) in a VS Code conda environment, those packages may not be available in Rhino's own CPython runtime. The VS Code extension bridges this gap by dynamically aligning `sys.path` at send time:
+
+### How it works
+
+1. **Probe** — on first F4 press in a VS Code session, the extension spawns two subprocesses to read `sys.path` from both the active conda interpreter and Rhino's CPython at `~/.rhinocode/py39-rh8/python.exe`
+2. **Diff** — paths present in the conda env but absent from Rhino's Python are identified (case-insensitive)
+3. **Exclude stdlib** — conda env's `lib/`, `DLLs/`, and `pythonX.Y.zip` paths are excluded to avoid ABI mismatch with Rhino's bundled Python 3.9.10
+4. **Inject** — those paths are prepended to the script as `sys.path.insert(0, ...)` lines before being sent to Rhino
+
+This lets editable installs (`rh8_py39_utils`, `sofiscript`, etc.) developed in VS Code be immediately available in Rhino without reinstallation.
+
+### Error file logging
+
+When a Python script fails in Rhino (syntax or runtime error), the traceback is written to `[scriptpath].py.error` by the Rhino plugin — surviving the send/receive cycle so no error is silently lost. The VS Code extension displays the error in its output channel and shows the first line as a popup.
+
