@@ -26,8 +26,8 @@ namespace ScriptSync
         public bool IsRunning { get; set; }
         /// <summary> The IP address of the server. </summary>
         public string Ip = "127.0.0.1";
-        /// <summary> The port of the server. </summary>
-        public int Port = 58258;
+        /// <summary> The port of the server. It is allocated dynamically so that several Rhino instances can listen at the same time. </summary>
+        public int Port = ScriptSyncPortAllocator.DefaultPort;
 
         public ScriptSyncStart()
         {
@@ -50,7 +50,19 @@ namespace ScriptSync
             }
 
             KillExistingListener();
-            
+
+            // Allocate a free port so that several Rhino instances can run the server
+            // side by side. The first port of the range is preferred, so a lone Rhino
+            // instance keeps the historic behaviour.
+            int allocatedPort;
+            if (!ScriptSyncPortAllocator.TryFindFreePort(Ip, ScriptSyncPortAllocator.DefaultPort, ScriptSyncPortAllocator.MaxPort, out allocatedPort))
+            {
+                RhinoApp.WriteLine("Error: no free port available in range {0}-{1}",
+                    ScriptSyncPortAllocator.DefaultPort, ScriptSyncPortAllocator.MaxPort);
+                return Rhino.Commands.Result.Failure;
+            }
+            Port = allocatedPort;
+
             // Try to start the server directly - if port is still in TIME_WAIT from previous run,
             // the TcpListener will handle it or we'll get a specific error
             try
@@ -89,13 +101,53 @@ namespace ScriptSync
                 }
                 return Rhino.Commands.Result.Failure;
             }
-            
+
             IsRunning = false;
 
             Thread WorkerThread = new Thread(new ThreadStart(Run));
             WorkerThread.Start();
 
+            RegisterInstance();
+
             return Rhino.Commands.Result.Success;
+        }
+
+        /// <summary>
+        /// Publish this Rhino instance in the shared registry so that the VSCode
+        /// extension (and the python helpers) can discover it and target it.
+        /// </summary>
+        private void RegisterInstance()
+        {
+            try
+            {
+                // Reading the active document must happen on the UI thread.
+                string title = string.Empty;
+                string documentPath = string.Empty;
+                RhinoApp.InvokeOnUiThread(new Action(() =>
+                {
+                    try
+                    {
+                        RhinoDoc activeDoc = RhinoDoc.ActiveDoc;
+                        if (activeDoc != null)
+                        {
+                            title = activeDoc.Name ?? string.Empty;
+                            documentPath = activeDoc.Path ?? string.Empty;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        RhinoApp.WriteLine("ScriptSync: could not read the active document: " + ex.Message);
+                    }
+                }));
+
+                ScriptSyncInstanceRegistry.Register(Port, title, documentPath);
+                RhinoApp.WriteLine("ScriptSync registered as instance on port " + Port);
+            }
+            catch (Exception e)
+            {
+                // Registration is a convenience: a failure must not stop the server.
+                RhinoApp.WriteLine("ScriptSync: could not register instance: " + e.Message);
+            }
         }
 
         private void KillExistingListener()
@@ -133,11 +185,12 @@ namespace ScriptSync
         /// </summary>
         public void Run()
         {
-            // Enable SO_REUSEADDR to allow reusing the port after restart
+            // The listener has already been started in RunCommand (this is what let us
+            // allocate a free port). Starting it twice would throw, so here we only
+            // ensure the socket options are set and that the loop is entered.
             try
             {
                 _server.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                _server.Start();
                 IsRunning = true;
             }
             catch (Exception e)
@@ -405,33 +458,6 @@ namespace ScriptSync
                 }
             }
             return sb.ToString();
-        }
-
-        /// <summary>
-        /// The ScriptEditor on a thread needs a dry run to be able to run scripts.
-        /// </summary>
-        /// <returns> true if the dry run is ok </returns>
-        private bool IsScriptEditorRunnerFromThreadOk()
-        {
-            string cPyScriptPath = System.IO.Path.GetFullPath(@"./temp/cpy_version.py");
-            string ironPyScriptPath = System.IO.Path.GetFullPath(@"./temp/ironpy_version.py");
-            string csScriptPath = System.IO.Path.GetFullPath(@"./temp/CsVersion.cs");
-
-            System.IO.File.WriteAllText(cPyScriptPath, "#! python3\nimport sys\nprint(sys.version)");
-            System.IO.File.WriteAllText(ironPyScriptPath, "#! python2\nimport sys\nprint(sys.version)");
-            System.IO.File.WriteAllText(csScriptPath, "using System;\n\nCsVersion.Main();\n\nclass CsVersion\n{\n\tstatic public void Main()\n\t{\n\t\tConsole.WriteLine(\"C# Runtime: \" + Environment.Version.ToString());\n\t\tConsole.WriteLine(\"platform: \" + Environment.OSVersion.ToString());\n\t}\n}");
-
-            bool cPyIsRunning = RhinoApp.RunScript("_-ScriptEditor Run " + cPyScriptPath, true);
-            bool ironPyIsRunning = RhinoApp.RunScript("_-ScriptEditor Run " + ironPyScriptPath, true);
-            bool csIsRunning = RhinoApp.RunScript("_-ScriptEditor Run " + csScriptPath, true);
-
-            System.IO.File.Delete(cPyScriptPath);
-            System.IO.File.Delete(ironPyScriptPath);
-            System.IO.File.Delete(csScriptPath);
-
-            if (!cPyIsRunning || !ironPyIsRunning || !csIsRunning)
-                return false;
-            return true;
         }
     }
 }

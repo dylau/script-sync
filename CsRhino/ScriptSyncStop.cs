@@ -53,6 +53,17 @@ namespace ScriptSync
         {
             ScriptSyncStart.Instance.IsRunning = false;
 
+            // Remove this instance from the shared registry so that the VSCode
+            // extension no longer offers it as a target.
+            try
+            {
+                ScriptSyncInstanceRegistry.UnregisterCurrent();
+            }
+            catch (Exception e)
+            {
+                RhinoApp.WriteLine("ScriptSync: error removing instance from registry: " + e.Message);
+            }
+
             // Soft path: poke the accept loop so it exits cleanly.
             try
             {
