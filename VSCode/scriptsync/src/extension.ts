@@ -4,14 +4,26 @@ import * as vscode from 'vscode';
 import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
+import { readLiveInstances } from './instances';
+import { forgetInstance, pickInstance, rememberInstance, resolveTargetInstance } from './selection';
 
 let server: net.Server | null = null;
 let connections: net.Socket[] = [];
 let isLogging = false;
 
-const RHINO_TCP_PORT = 58258;
+// The host of the Rhino instances. The port is not fixed: every Rhino instance
+// binds the first free port of the range 58258...58279, so a single instance
+// keeps the historic default while several instances can run side by side.
 const RHINO_TCP_HOST = '127.0.0.1';
-const RHINO_PYTHON_PATH = 'C:\\Users\\uk083720\\.rhinocode\\py39-rh8\\python.exe';
+// Rhino's own CPython interpreter. Used to align sys.path between the conda
+// environment of VSCode and the interpreter bundled with Rhino.
+const RHINO_PYTHON_PATH = path.join(
+    process.env.USERPROFILE || os.homedir(),
+    '.rhinocode',
+    'py39-rh8',
+    'python.exe'
+);
 
 const outputChannel = vscode.window.createOutputChannel('scriptsync');
 let lastReceivedMessage: { guid: any; } | null = null;
@@ -218,11 +230,19 @@ export function activate(context: vscode.ExtensionContext) {
     let rhinoSenderCmd = vscode.commands.registerCommand('scriptsync.sendPath', async () => {
         console.log('scriptsync.sendPath command triggered');
         outputChannel.appendLine('F4 pressed - sending to Rhino');
-        vscode.window.showInformationMessage('scriptsync::Sending to Rhino...');
 
-        // port and ip address of the server
-        const port = RHINO_TCP_PORT;
+        // Resolve the Rhino instance that should receive the script. The choice is
+        // remembered, so it only has to be made once.
+        const target = await resolveTargetInstance(context);
+        if (!target) {
+            return;
+        }
+        await rememberInstance(context, target);
+
+        const port = target.port;
         const host = RHINO_TCP_HOST;
+        outputChannel.appendLine(`Targeting Rhino instance on port ${port}`);
+        vscode.window.showInformationMessage(`scriptsync::Sending to Rhino (port ${port})...`);
 
         // check the file extension: accept only .py and .cs files
         const activeTextEditor = vscode.window.activeTextEditor;
@@ -266,8 +286,25 @@ export function activate(context: vscode.ExtensionContext) {
 
         const client = new net.Socket();
 
+        const timeoutMs = vscode.workspace.getConfiguration('scriptsync').get<number>('instanceTimeout', 5000);
+        client.setTimeout(timeoutMs, () => {
+            outputChannel.appendLine(`scriptsync::timeout after ${timeoutMs}ms waiting for the Rhino instance on port ${port}`);
+            client.destroy();
+        });
+
         client.on('error', (error: Error) => {
-            vscode.window.showErrorMessage('scriptsync::Run ScriptSyncStart on Rhino first.');
+            // The selected instance may have been closed while other instances are
+            // still running, so mention the port and offer to pick another one.
+            const others = readLiveInstances().filter((i) => i.port !== port);
+            const message = others.length > 0
+                ? `scriptsync::Could not reach the Rhino instance on port ${port}.`
+                : 'scriptsync::Run ScriptSyncStart on Rhino first.';
+            vscode.window.showErrorMessage(message, ...(others.length > 0 ? ['Select another instance'] : []))
+                .then((choice) => {
+                    if (choice === 'Select another instance') {
+                        vscode.commands.executeCommand('scriptsync.selectInstance');
+                    }
+                });
             console.error('Error: ', error);
         });
 
@@ -321,6 +358,49 @@ export function activate(context: vscode.ExtensionContext) {
         });
     });
     context.subscriptions.push(rhinoSenderCmd);
+
+    // % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+    // %% Rhino instance selection
+    // % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+    let selectInstanceCmd = vscode.commands.registerCommand('scriptsync.selectInstance', async () => {
+        const instance = await pickInstance(context);
+        if (!instance) {
+            return;
+        }
+        await rememberInstance(context, instance);
+        outputChannel.appendLine(`Selected Rhino instance: ${instance.title || instance.pid} (port ${instance.port})`);
+        vscode.window.showInformationMessage(
+            `scriptsync::Rhino instance selected: ${instance.title || 'pid ' + instance.pid} (port ${instance.port})`
+        );
+    });
+    context.subscriptions.push(selectInstanceCmd);
+
+    let clearInstanceCmd = vscode.commands.registerCommand('scriptsync.clearInstance', async () => {
+        await forgetInstance(context);
+        outputChannel.appendLine('Cleared the selected Rhino instance.');
+        vscode.window.showInformationMessage('scriptsync::Cleared the selected Rhino instance.');
+    });
+    context.subscriptions.push(clearInstanceCmd);
+
+    let listInstancesCmd = vscode.commands.registerCommand('scriptsync.listInstances', () => {
+        const instances = readLiveInstances();
+        if (instances.length === 0) {
+            vscode.window.showInformationMessage('scriptsync::No Rhino instance is listening.');
+            return;
+        }
+        outputChannel.clear();
+        outputChannel.show(true);
+        outputChannel.appendLine(`scriptsync:: ${instances.length} Rhino instance(s) listening:`);
+        for (const instance of instances) {
+            outputChannel.appendLine(
+                `  port ${instance.port}  pid ${instance.pid}  ${instance.title || '(no document)'}`
+            );
+            if (instance.documentPath) {
+                outputChannel.appendLine(`      ${instance.documentPath}`);
+            }
+        }
+    });
+    context.subscriptions.push(listInstancesCmd);
 
     // % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
     // %% Grasshopper

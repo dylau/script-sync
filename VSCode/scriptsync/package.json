@@ -20,7 +20,10 @@
   ],
   "activationEvents": [
     "onCommand:scriptsync.sendPath",
-    "onCommand:scriptsync.toggleGH"
+    "onCommand:scriptsync.toggleGH",
+    "onCommand:scriptsync.selectInstance",
+    "onCommand:scriptsync.clearInstance",
+    "onCommand:scriptsync.listInstances"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -32,6 +35,18 @@
       {
         "command": "scriptsync.toggleGH",
         "title": "Toggle Server vscode to listen to incoming GH messages"
+      },
+      {
+        "command": "scriptsync.selectInstance",
+        "title": "Select the Rhino Instance to Send To"
+      },
+      {
+        "command": "scriptsync.clearInstance",
+        "title": "Clear the Selected Rhino Instance"
+      },
+      {
+        "command": "scriptsync.listInstances",
+        "title": "List the Running Rhino Instances"
       }
     ],
     "keybindings": [
@@ -53,7 +68,22 @@
           "mac": "shift+f4",
           "when": "editorTextFocus"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "script-sync",
+      "properties": {
+        "scriptsync.defaultPort": {
+          "type": "number",
+          "default": 58258,
+          "description": "TCP port used when no Rhino instance could be discovered in the registry. Rhino instances bind the first free port starting from 58258."
+        },
+        "scriptsync.instanceTimeout": {
+          "type": "number",
+          "default": 5000,
+          "description": "Timeout in milliseconds when connecting to the selected Rhino instance."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
