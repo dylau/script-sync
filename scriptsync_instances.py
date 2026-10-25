@@ -67,16 +67,60 @@ def read_instances() -> List[dict]:
 
 
 def is_process_alive(pid: int) -> bool:
-    """Check whether a process is still running."""
+    """
+    Check whether a process is still running.
+
+    On Windows os.kill(pid, 0) raises OSError (WinError 87) even for a pid that
+    is perfectly alive, so the check is done with the Windows API instead.
+    Anything that is not a clear "not found" is treated as alive so that a valid
+    instance is never dropped from the registry.
+    """
     if not pid or pid <= 0:
         return False
+    if os.name == "nt":
+        return _is_process_alive_windows(pid)
     try:
         os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
     except OSError:
         return False
     except Exception:
-        return False
-    return True
+        return True
+
+
+def _is_process_alive_windows(pid: int) -> bool:
+    """Windows specific liveness check based on the process API."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            error = kernel32.GetLastError()
+            # 5 = ERROR_ACCESS_DENIED: the process exists but is not ours.
+            return error == 5
+
+        try:
+            exit_code = wintypes.DWORD()
+            if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                # STILL_ACTIVE (259) means the process is still running.
+                return exit_code.value == 259
+            return True
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
 
 
 def read_live_instances() -> List[dict]:
