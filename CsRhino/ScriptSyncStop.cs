@@ -53,6 +53,9 @@ namespace ScriptSync
         {
             ScriptSyncStart.Instance.IsRunning = false;
 
+            // Stop refreshing the registry entry when the document changes.
+            ScriptSyncStart.UnsubscribeFromDocumentEvents();
+
             // Remove this instance from the shared registry so that the VSCode
             // extension no longer offers it as a target.
             try

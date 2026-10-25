@@ -108,8 +108,78 @@ namespace ScriptSync
             WorkerThread.Start();
 
             RegisterInstance();
+            SubscribeToDocumentEvents();
 
             return Rhino.Commands.Result.Success;
+        }
+
+        /// <summary>
+        /// Keep the registry entry in sync with the document that is open.
+        /// The document may be opened, closed or switched long after
+        /// ScriptSyncStart ran.
+        /// </summary>
+        private void SubscribeToDocumentEvents()
+        {
+            try
+            {
+                RhinoDoc.ActiveDocumentChanged += OnActiveDocumentChanged;
+                RhinoDoc.NewDocument += OnActiveDocumentChanged;
+                RhinoDoc.CloseDocument += OnActiveDocumentChanged;
+                RhinoDoc.EndSaveDocument += OnDocumentSaved;
+            }
+            catch (Exception e)
+            {
+                RhinoApp.WriteLine("ScriptSync: could not subscribe to the document events: " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Stop listening to the document events.
+        /// </summary>
+        public static void UnsubscribeFromDocumentEvents()
+        {
+            try
+            {
+                RhinoDoc.ActiveDocumentChanged -= OnActiveDocumentChanged;
+                RhinoDoc.NewDocument -= OnActiveDocumentChanged;
+                RhinoDoc.CloseDocument -= OnActiveDocumentChanged;
+                RhinoDoc.EndSaveDocument -= OnDocumentSaved;
+            }
+            catch (Exception)
+            {
+                // Nothing to do, the events are simply not subscribed.
+            }
+        }
+
+        /// <summary>
+        /// Handler for the document events: refresh the registry entry so that the
+        /// instance keeps showing the document it currently holds.
+        /// </summary>
+        private static void OnActiveDocumentChanged(object sender, DocumentEventArgs e)
+        {
+            try
+            {
+                ScriptSyncStart.Instance.RefreshInstance();
+            }
+            catch (Exception)
+            {
+                // A failed refresh must never break the document workflow.
+            }
+        }
+
+        /// <summary>
+        /// Handler for the save events: the document path may have changed.
+        /// </summary>
+        private static void OnDocumentSaved(object sender, DocumentSaveEventArgs e)
+        {
+            try
+            {
+                ScriptSyncStart.Instance.RefreshInstance();
+            }
+            catch (Exception)
+            {
+                // A failed refresh must never break the save workflow.
+            }
         }
 
         /// <summary>
@@ -147,6 +217,45 @@ namespace ScriptSync
             {
                 // Registration is a convenience: a failure must not stop the server.
                 RhinoApp.WriteLine("ScriptSync: could not register instance: " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Refresh the title and document path of this instance in the registry.
+        ///
+        /// The document may be opened, closed or switched long after
+        /// ScriptSyncStart ran, so the entry is refreshed whenever the active
+        /// document changes. Without this the instance would stay anonymous and
+        /// could not be told apart from the other running Rhinos.
+        /// </summary>
+        private void RefreshInstance()
+        {
+            try
+            {
+                string title = string.Empty;
+                string documentPath = string.Empty;
+                RhinoApp.InvokeOnUiThread(new Action(() =>
+                {
+                    try
+                    {
+                        RhinoDoc activeDoc = RhinoDoc.ActiveDoc;
+                        if (activeDoc != null)
+                        {
+                            title = activeDoc.Name ?? string.Empty;
+                            documentPath = activeDoc.Path ?? string.Empty;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Keep the previous values when the document cannot be read.
+                    }
+                }));
+
+                ScriptSyncInstanceRegistry.Register(Port, title, documentPath);
+            }
+            catch (Exception e)
+            {
+                RhinoApp.WriteLine("ScriptSync: could not refresh instance: " + e.Message);
             }
         }
 
