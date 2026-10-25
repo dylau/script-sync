@@ -14,7 +14,7 @@
 
 Script-Sync uses a **client-server TCP architecture**:
 
-- **Server (Rhino):** C# plugin (`CsRhino/`) listens on TCP port `58258`
+- **Server (Rhino):** C# plugin (`CsRhino/`) listens on TCP port `58258` (or the first free port in `58258…58279` when several instances run)
 - **Client (VSCode):** TypeScript extension (`VSCode/scriptsync/`) connects and sends file paths as JSON
 - **GH Listener:** VSCode listens on port `58260` for Grasshopper responses
 
@@ -124,6 +124,17 @@ Each component lives in `GH/PyGH/components/<name>/` and requires:
 - Test scripts located in `CsRhino/tests/`
 - Start plugin in Rhino: `ScriptSyncStart` command
 - Stop plugin in Rhino: `ScriptSyncStop` command
+
+### Multiple Rhino instances
+- Each instance binds the first free port in `58258…58279` and registers itself in
+  `%LOCALAPPDATA%\script-sync\instances.json` (`Pid`, `Port`, `Title`, `DocumentPath`,
+  `StartedAt` — PascalCase keys).
+- The VSCode command `scriptsync.selectInstance` picks the target; the choice is
+  remembered in `workspaceState` with a `globalState` fallback.
+- The python helpers (`sync_to_rhino.py`, `rhipy_sync.py`, `sync_to_rhino_wsl.py`,
+  `test_sync.py`, `CsRhino/client.py`) accept `--port` and `--instance` and share
+  the registry logic through `scriptsync_instances.py`.
+- The Grasshopper channel (port `58260`) is still single instance.
 
 ### VSCode Extension
 ```bash

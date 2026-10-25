@@ -94,6 +94,35 @@ For Python files, add a `shebang` to the first line of the file to specify the i
 > [!CAUTION]
 > If you use modules like `pickle` to (de)serialize objects script-sync might causes problems because we reload all the modules at every file save. This can interfere with `pickle` thinking that a class is instanciated multiple times.
 
+## Running several Rhino instances
+
+You can run `ScriptSyncStart` in **several Rhino instances at the same time**. Each
+instance binds the first free port starting from `58258`, so the first Rhino keeps
+`58258` and the next ones get `58259`, `58260`, and so on (up to `58279`).
+
+Every running instance registers itself in
+`%LOCALAPPDATA%\script-sync\instances.json` together with the document it has open.
+
+To choose which Rhino receives your script, run the command
+**`ScriptSync: Select the Rhino Instance`** from the VSCode command palette. The
+selection is remembered, so you only have to do it once — every later `F4` goes to
+the same instance. Two more commands help:
+
+* `ScriptSync: List the Running Rhino Instances` — prints the instances and their ports to the output channel.
+* `ScriptSync: Clear the Selected Rhino Instance` — forgets the selection.
+
+From the command line you can target an instance explicitly:
+
+```bash
+python sync_to_rhino.py my_script.py --instance my_model     # by document name
+python sync_to_rhino.py my_script.py --port 58259             # by port
+python scriptsync_instances.py                                # list the instances
+```
+
+> [!NOTE]
+> The Grasshopper side (the `shift+F4` channel) is still single instance: the GH
+> component always connects to port `58260`.
+
 ## Requirements
 The plug-in needs to be installed on RhinoV8, Grasshopper and VSCode
 
@@ -117,13 +146,15 @@ Packages are published (`.yak` and `.vsix`)  automatically when a GitHub release
 |---|---|---|
 | VSCode extension | `VSCode/scriptsync/src/extension.ts` | Sends script path to Rhino via TCP on F4 |
 | Rhino plugin | `CsRhino/ScriptSyncStart.cs` | Receives path, runs script, handles errors |
+| Instance registry | `CsRhino/ScriptSyncInstanceRegistry.cs` | Publishes the running Rhino instances so they can be discovered |
+| Port allocator | `CsRhino/ScriptSyncPortAllocator.cs` | Finds the first free port so several instances can listen |
 | Grasshopper component | `GH/PyGH/components/` | Runs Python in Grasshopper |
 
 ### TCP Connection
 
 | Direction | Host | Port |
 |---|---|---|
-| VSCode → Rhino | `127.0.0.1` | `58258` |
+| VSCode → Rhino | `127.0.0.1` | `58258`+ (first free port in `58258…58279`) |
 | Rhino → VSCode | `127.0.0.1` | `58260` |
 
 ### Flow: VSCode → Rhino (F4)
