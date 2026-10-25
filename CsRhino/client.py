@@ -1,28 +1,58 @@
-#! python3
+#!/usr/bin/env python3
+"""
+Send a test script to a running Rhino instance.
 
-import socket
+This is a thin wrapper around the repository level helpers, kept here because it
+lives next to the Rhino plug-in sources.
+
+Usage:
+    python CsRhino/client.py <script_path> [--port N] [--instance NAME]
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scriptsync_instances import add_common_arguments, resolve_port  # noqa: E402
 
 
-def send_file(server_address, server_port):
-    # Create a TCP socket
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Send a script to a running Rhino instance.")
+    add_common_arguments(parser)
+    parser.add_argument("script", help="Path of the script to send.")
+    args = parser.parse_args()
 
-    # Connect to the server
-    client_socket.connect((server_address, server_port))
+    script_path = os.path.abspath(args.script)
+    if not os.path.exists(script_path):
+        print(f"ERROR: file not found: {script_path}")
+        return 1
 
-    # send the following path to the server
-    path = r"F:\script-sync\CsRhino\tests\cpy_version.py"
-    path = r"F:\script-sync\CsRhino\tests\ironpy_version.py"
-    path = r"F:\script-sync\CsRhino\tests\CsVersion.cs"
-    client_socket.send(path.encode())
+    try:
+        port = resolve_port(args.port, args.instance, args.host)
+    except SystemExit as error:
+        print(error)
+        return 1
 
-    # Close the socket
-    client_socket.close()
-    print(f"File path sent successfully.")
+    import socket
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((args.host, port))
+        sock.send(script_path.encode("utf-8"))
+        sock.close()
+        print(f"Sent to Rhino on port {port}: {script_path}")
+    except ConnectionRefusedError:
+        print(f"ERROR: no Rhino instance listening on port {port}. Run 'ScriptSyncStart' in Rhino first.")
+        return 1
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    server_address = "127.0.0.1"  # Change this to the server's IP address
-    server_port = 58258  # Change this to the server's port number
-
-    send_file(server_address, server_port)
+    sys.exit(main())
