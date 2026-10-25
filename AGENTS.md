@@ -51,6 +51,10 @@ Several Rhino instances can run `ScriptSyncStart` at the same time.
   Entries whose process is gone are pruned on read (a crashed Rhino never runs
   `ScriptSyncStop`). Writes are atomic (temp file + swap) and the whole
   read-modify-write happens under a lock file, otherwise concurrent starts lose entries.
+  The entry is **refreshed when the open document changes** (`ActiveDocumentChanged`,
+  `NewDocument`, `CloseDocument`, `EndSaveDocument` are subscribed in
+  `ScriptSyncStart.cs`), so the title is never stale. `RhinoDoc.ActiveDoc` is a
+  static property on `RhinoDoc` — there is no `RhinoApp.ActiveDoc`.
 - **Selection** — VSCode command `scriptsync.selectInstance` shows a quick pick of the
   running instances. The choice is remembered in `workspaceState` with a
   `globalState` fallback, so it is configured once per folder. `F4` then always
@@ -162,7 +166,8 @@ Live hardcoding bugs to be aware of:
   Rhino/process holds it — do not add a "kill the process" fallback
   (an earlier PowerShell approach was deliberately commented out).
 - `RhinoDoc.ActiveDoc` is a **static property on `RhinoDoc`**. There is no
-  `RhinoApp.ActiveDoc`.
+  `RhinoApp.ActiveDoc`. `RhinoDoc.ActiveDocumentChanged` and friends are
+  `EventHandler<T>` with `DocumentEventArgs` / `DocumentSaveEventArgs`.
 - The registry must never depend on Rhino being alive: `RhinoApp.WriteLine`
   throws outside a Rhino session, so logging goes through a helper that falls
   back to `Debug.WriteLine`.
